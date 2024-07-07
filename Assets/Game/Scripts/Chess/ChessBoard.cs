@@ -9,7 +9,7 @@ namespace Game.Scripts.Chess
     public class ChessBoard : MonoBehaviour
     {
         public PieceSpawner pieceSpawner;
-        
+
         public Piece[,] board = new Piece[8, 8];
         public GameObject highlightPrefab;
         public bool isWhiteTurn = true;
@@ -17,37 +17,30 @@ namespace Game.Scripts.Chess
         public GameObject whiteKing;
         public GameObject blackKing;
 
-        List<GameObject> highlights = new List<GameObject>();
-
-        public enum AIDifficulty
-        {
-            Easy,
-            Normal
-        }
-
-        public AIDifficulty aiDifficulty = AIDifficulty.Normal;
+        readonly List<GameObject> highlights = new List<GameObject>();
 
         public void HighlightPossibleMoves(Vector2Int position)
         {
             ClearHighlights();
 
             Piece selectedPiece = board[position.x, position.y];
-            if (selectedPiece != null && selectedPiece.isWhite == isWhiteTurn)
+            if (selectedPiece == null || selectedPiece.isWhite != isWhiteTurn) return;
+
+            List<Vector2Int> possibleMoves = selectedPiece.GetPossibleMoves(position, board);
+            for (int i_move = 0; i_move < possibleMoves.Count; i_move++)
             {
-                List<Vector2Int> possibleMoves = selectedPiece.GetPossibleMoves(position, board);
-                foreach (Vector2Int move in possibleMoves)
-                {
-                    GameObject highlight = Instantiate(highlightPrefab, new Vector3(move.x, move.y, -0.1f), Quaternion.identity);
-                    highlights.Add(highlight);
-                }
+                var move = possibleMoves[i_move];
+                GameObject highlight = Instantiate(highlightPrefab, new Vector3(move.x, move.y, -0.1f), Quaternion.identity);
+                highlights.Add(highlight);
             }
         }
 
         public void ClearHighlights()
         {
-            foreach (GameObject highlight in highlights)
+            int highlightCount = highlights.Count;
+            for (int i_highlight = 0; i_highlight < highlightCount; i_highlight++)
             {
-                Destroy(highlight);
+                Destroy(highlights[i_highlight]);
             }
 
             highlights.Clear();
@@ -58,69 +51,46 @@ namespace Game.Scripts.Chess
             Debug.Assert(Piece.IsWithinBoard(from) && Piece.IsWithinBoard(to));
 
             Piece piece = board[from.x, from.y];
-            if (piece != null && piece.CanMoveTo(to, board))
+            if (piece == null || !piece.CanMoveTo(to, board)) return;
+
+            Piece capturedPiece = board[to.x, to.y];
+            if (capturedPiece != null) Destroy(capturedPiece.gameObject);
+
+            // Move the piece
+            board[to.x, to.y] = piece;
+            board[from.x, from.y] = null;
+            piece.Move(to);
+            isWhiteTurn = !isWhiteTurn;
+
+            // check if a king is captured
+            if (capturedPiece is King)
             {
-                // Check if there's a piece at the destination
-                Piece capturedPiece = board[to.x, to.y];
-                if (capturedPiece != null)
+                if (capturedPiece.isWhite)
                 {
-                    // Destroy the captured piece
-                    Destroy(capturedPiece.gameObject);
+                    whiteKing = null;
                 }
-
-                // Move the piece
-                board[to.x, to.y] = piece;
-                board[from.x, from.y] = null;
-                piece.Move(to);
-                isWhiteTurn = !isWhiteTurn;
-                
-                // Update the cached king reference if a king is captured
-                if (capturedPiece is King)
+                else
                 {
-                    if (capturedPiece.isWhite)
-                    {
-                        whiteKing = null;
-                    }
-                    else
-                    {
-                        blackKing = null;
-                    }
-                }
-                
-                // promote pawn
-                if (piece is Pawn && (to.y == 0 || to.y == 7))
-                {
-                    Destroy(piece.gameObject);
-                    
-                    PieceSpawner.CreatePiece(this, piece.isWhite ? pieceSpawner.whiteQueenPrefab : pieceSpawner.blackQueenPrefab, 
-                        new Vector3(to.x, to.y, 0), piece.isWhite);
-                }
-
-                // After player's move, check if the game should end
-                if (CheckGameEnd())
-                {
-                    return;
-                }
-
-                // After player's move, calculate AI's move if it's AI's turn
-                if (!isWhiteTurn)
-                {
-                    Vector2Int bestMove = CalculateBestMove(GetAIDepth());
-                    MovePiece(new Vector2Int(bestMove.x / 8, bestMove.x % 8), new Vector2Int(bestMove.y / 8, bestMove.y % 8));
+                    blackKing = null;
                 }
             }
-        }
 
-        int GetAIDepth()
-        {
-            switch (aiDifficulty)
+            // promote pawn
+            if (piece is Pawn && (to.y == 0 || to.y == 7))
             {
-                case AIDifficulty.Easy:
-                    return 1;
-                case AIDifficulty.Normal:
-                    return 3;
-                default:
-                    return 3;
+                Destroy(piece.gameObject);
+
+                PieceSpawner.CreatePiece(this, piece.isWhite ? pieceSpawner.whiteQueenPrefab : pieceSpawner.blackQueenPrefab,
+                    new Vector3(to.x, to.y, 0), piece.isWhite);
+            }
+
+            if (CheckGameEnd()) return;
+
+            // let the AI move
+            if (!isWhiteTurn)
+            {
+                Vector2Int bestMove = CalculateBestMove(3);
+                MovePiece(new Vector2Int(bestMove.x / 8, bestMove.x % 8), new Vector2Int(bestMove.y / 8, bestMove.y % 8));
             }
         }
 
@@ -134,50 +104,40 @@ namespace Game.Scripts.Chess
                 for (int fromY = 0; fromY < 8; fromY++)
                 {
                     Piece piece = board[fromX, fromY];
-                    if (piece != null && piece.isWhite == isWhiteTurn)
+                    if (piece == null || piece.isWhite != isWhiteTurn) continue;
+
+                    List<Vector2Int> moves = piece.GetPossibleMoves(new Vector2Int(fromX, fromY), board);
+                    for (int i_move = 0; i_move < moves.Count; i_move++)
                     {
-                        List<Vector2Int> moves = piece.GetPossibleMoves(new Vector2Int(fromX, fromY), board);
-                        foreach (Vector2Int to in moves)
+                        var to = moves[i_move];
+
+                        Piece capturedPiece = board[to.x, to.y];
+                        board[to.x, to.y] = piece;
+                        board[fromX, fromY] = null;
+
+                        int score = Minimax(depth - 1, false, int.MinValue, int.MaxValue);
+
+                        board[fromX, fromY] = piece;
+                        board[to.x, to.y] = capturedPiece;
+
+                        if (score > bestScore)
                         {
-                            Piece capturedPiece = board[to.x, to.y];
-                            board[to.x, to.y] = piece;
-                            board[fromX, fromY] = null;
-
-                            int score = Minimax(depth - 1, false, int.MinValue, int.MaxValue);
-
-                            board[fromX, fromY] = piece;
-                            board[to.x, to.y] = capturedPiece;
-
-                            if (score > bestScore)
-                            {
-                                bestScore = score;
-                                bestMoves.Clear();
-                                bestMoves.Add(new Vector2Int(fromX * 8 + fromY, to.x * 8 + to.y));
-                            }
-                            else if (score == bestScore)
-                            {
-                                bestMoves.Add(new Vector2Int(fromX * 8 + fromY, to.x * 8 + to.y));
-                            }
+                            bestScore = score;
+                            bestMoves.Clear();
+                            bestMoves.Add(new Vector2Int(fromX * 8 + fromY, to.x * 8 + to.y));
+                        }
+                        else if (score == bestScore)
+                        {
+                            bestMoves.Add(new Vector2Int(fromX * 8 + fromY, to.x * 8 + to.y));
                         }
                     }
                 }
             }
 
-            // Ensure there are valid moves before trying to choose one
-            if (bestMoves.Count > 0)
-            {
-                // Choose a random move from the best moves, preferring captures
-                List<Vector2Int> captureMoves = bestMoves.FindAll(move => board[(move.y / 8), (move.y % 8)] != null);
-                if (captureMoves.Count > 0)
-                {
-                    return captureMoves[Random.Range(0, captureMoves.Count)];
-                }
+            if (bestMoves.Count <= 0) return new Vector2Int(-1, -1);
 
-                return bestMoves[Random.Range(0, bestMoves.Count)];
-            }
-
-            // If no moves are available, return an invalid move (handle this in your calling code)
-            return new Vector2Int(-1, -1);
+            List<Vector2Int> captureMoves = bestMoves.FindAll(move => board[(move.y / 8), (move.y % 8)] != null);
+            return captureMoves.Count > 0 ? captureMoves[Random.Range(0, captureMoves.Count)] : bestMoves[Random.Range(0, bestMoves.Count)];
         }
 
         int Minimax(int depth, bool isMaximizingPlayer, int alpha, int beta)
@@ -187,7 +147,7 @@ namespace Game.Scripts.Chess
                 return EvaluateBoard();
             }
 
-            if (isMaximizingPlayer)
+            if (!isMaximizingPlayer)
             {
                 int maxEval = int.MinValue;
                 for (int fromX = 0; fromX < 8; fromX++)
@@ -198,8 +158,10 @@ namespace Game.Scripts.Chess
                         if (piece != null && piece.isWhite == isWhiteTurn)
                         {
                             List<Vector2Int> moves = piece.GetPossibleMoves(new Vector2Int(fromX, fromY), board);
-                            foreach (Vector2Int to in moves)
+                            for (int i_move = 0; i_move < moves.Count; i_move++)
                             {
+                                var to = moves[i_move];
+
                                 Piece capturedPiece = board[to.x, to.y];
                                 board[to.x, to.y] = piece;
                                 board[fromX, fromY] = null;
@@ -211,8 +173,7 @@ namespace Game.Scripts.Chess
                                 board[fromX, fromY] = piece;
                                 board[to.x, to.y] = capturedPiece;
 
-                                if (beta <= alpha)
-                                    break;
+                                if (beta <= alpha) break;
                             }
                         }
                     }
@@ -220,39 +181,38 @@ namespace Game.Scripts.Chess
 
                 return maxEval;
             }
-            else
+
+            int minEval = int.MaxValue;
+            for (int fromX = 0; fromX < 8; fromX++)
             {
-                int minEval = int.MaxValue;
-                for (int fromX = 0; fromX < 8; fromX++)
+                for (int fromY = 0; fromY < 8; fromY++)
                 {
-                    for (int fromY = 0; fromY < 8; fromY++)
+                    Piece piece = board[fromX, fromY];
+                    if (piece != null && piece.isWhite != isWhiteTurn)
                     {
-                        Piece piece = board[fromX, fromY];
-                        if (piece != null && piece.isWhite != isWhiteTurn)
+                        List<Vector2Int> moves = piece.GetPossibleMoves(new Vector2Int(fromX, fromY), board);
+                        for (int i_move = 0; i_move < moves.Count; i_move++)
                         {
-                            List<Vector2Int> moves = piece.GetPossibleMoves(new Vector2Int(fromX, fromY), board);
-                            foreach (Vector2Int to in moves)
-                            {
-                                Piece capturedPiece = board[to.x, to.y];
-                                board[to.x, to.y] = piece;
-                                board[fromX, fromY] = null;
+                            var to = moves[i_move];
 
-                                int eval = Minimax(depth - 1, true, alpha, beta);
-                                minEval = Mathf.Min(minEval, eval);
-                                beta = Mathf.Min(beta, eval);
+                            Piece capturedPiece = board[to.x, to.y];
+                            board[to.x, to.y] = piece;
+                            board[fromX, fromY] = null;
 
-                                board[fromX, fromY] = piece;
-                                board[to.x, to.y] = capturedPiece;
+                            int eval = Minimax(depth - 1, true, alpha, beta);
+                            minEval = Mathf.Min(minEval, eval);
+                            beta = Mathf.Min(beta, eval);
 
-                                if (beta <= alpha)
-                                    break;
-                            }
+                            board[fromX, fromY] = piece;
+                            board[to.x, to.y] = capturedPiece;
+
+                            if (beta <= alpha) break;
                         }
                     }
                 }
-
-                return minEval;
             }
+
+            return minEval;
         }
 
         int EvaluateBoard()
@@ -263,19 +223,15 @@ namespace Game.Scripts.Chess
                 for (int y = 0; y < 8; y++)
                 {
                     Piece piece = board[x, y];
-                    if (piece != null)
+                    if (piece == null) continue;
+                    
+                    int pieceValue = GetPieceValue(piece);
+                    if (piece.isWhite) score += pieceValue;
+                    else
                     {
-                        int pieceValue = GetPieceValue(piece);
-                        if (piece.isWhite)
-                        {
-                            score += pieceValue;
-                        }
-                        else
-                        {
-                            score -= pieceValue;
-                            // Bonus for attacking enemy pieces
-                            score -= GetAttackBonus(new Vector2Int(x, y));
-                        }
+                        score -= pieceValue;
+                        // Bonus for attacking enemy pieces (for the being aggressive)
+                        score -= GetAttackBonus(new Vector2Int(x, y));
                     }
                 }
             }
@@ -285,13 +241,16 @@ namespace Game.Scripts.Chess
 
         int GetPieceValue(Piece piece)
         {
-            if (piece is Pawn) return 10;
-            if (piece is Rook) return 50;
-            if (piece is Knight) return 30;
-            if (piece is Bishop) return 30;
-            if (piece is Queen) return 90;
-            if (piece is King) return 900;
-            return 0;
+            switch (piece)
+            {
+                case Pawn: return 10;
+                case Rook: return 50;
+                case Knight:
+                case Bishop: return 30;
+                case Queen: return 90;
+                case King: return 900;
+                default: return 0;
+            }
         }
 
         int GetAttackBonus(Vector2Int position)
@@ -299,7 +258,6 @@ namespace Game.Scripts.Chess
             int bonus = 0;
             List<Vector2Int> attackedSquares = new List<Vector2Int>();
 
-            // Get all squares attacked by the piece at this position
             Piece attacker = board[position.x, position.y];
             if (attacker != null)
             {
@@ -307,12 +265,13 @@ namespace Game.Scripts.Chess
             }
 
             // Check if any enemy pieces are under attack
-            foreach (Vector2Int square in attackedSquares)
+            for (int i_square = 0; i_square < attackedSquares.Count; i_square++)
             {
+                var square = attackedSquares[i_square];
+                
                 Piece target = board[square.x, square.y];
                 if (target != null && target.isWhite)
                 {
-                    // Bonus for attacking, with higher bonus for more valuable pieces
                     bonus += GetPieceValue(target) * 1000;
                 }
             }
@@ -361,7 +320,7 @@ namespace Game.Scripts.Chess
             return false;
         }
 
-        void OnDrawGizmos()
+        void OnDrawGizmos()  
         {
             Gizmos.color = Color.red;
             for (int x = 0; x < 8; x++)

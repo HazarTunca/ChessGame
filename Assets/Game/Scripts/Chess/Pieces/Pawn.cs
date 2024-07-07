@@ -26,7 +26,6 @@ namespace Game.Scripts.Chess.Pieces
                 }
             }
 
-            // Capture moves
             Vector2Int[] captureMoves = new Vector2Int[]
             {
                 currentPosition + new Vector2Int(-1, direction),

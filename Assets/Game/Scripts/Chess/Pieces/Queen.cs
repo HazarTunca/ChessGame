@@ -9,7 +9,7 @@ namespace Game.Scripts.Chess.Pieces
         {
             List<Vector2Int> moves = new List<Vector2Int>();
 
-            // Rook-like moves (vertical and horizontal)
+            // vertical and horizontal
             Vector2Int[] rookDirections = { Vector2Int.up, Vector2Int.down, Vector2Int.left, Vector2Int.right };
             foreach (Vector2Int direction in rookDirections)
             {
@@ -34,7 +34,7 @@ namespace Game.Scripts.Chess.Pieces
                 }
             }
 
-            // Bishop-like moves (diagonals)
+            // diagonals
             Vector2Int[] bishopDirections =
                 { Vector2Int.up + Vector2Int.left, Vector2Int.up + Vector2Int.right, Vector2Int.down + Vector2Int.left, Vector2Int.down + Vector2Int.right };
             foreach (Vector2Int direction in bishopDirections)

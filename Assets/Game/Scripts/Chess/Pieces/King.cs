@@ -7,7 +7,6 @@ namespace Game.Scripts.Chess.Pieces
         public override List<Vector2Int> GetPossibleMoves(Vector2Int currentPosition, Piece[,] board) {
             List<Vector2Int> moves = new List<Vector2Int>();
 
-            // Define the possible moves for the king (one step in any direction)
             Vector2Int[] directions = {
                 Vector2Int.up,
                 Vector2Int.down,
